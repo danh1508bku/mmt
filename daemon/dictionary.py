@@ -10,7 +10,12 @@
 # while attending the course
 #
 
-from collections import MutableMapping
+# Python 2/3 compatibility: MutableMapping moved to collections.abc in Python 3.3+
+# and removed from collections in Python 3.10+
+try:
+    from collections.abc import MutableMapping
+except ImportError:
+    from collections import MutableMapping
 
 class CaseInsensitiveDict(MutableMapping):
     """The :class:`CaseInsensitiveDict<MutableMapping>` object, which 
