@@ -108,16 +108,55 @@ class HttpAdapter:
 
         # Handle request hook
         if req.hook:
-            print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
-            req.hook(headers = "bksysnet",body = "get in touch")
-            #
-            # TODO: handle for App hook here
-            #
+            print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(
+                req.hook._route_path, req.hook._route_methods))
 
-        # Build response
+            # Call the route handler with request data
+            try:
+                handler_result = req.hook(headers=req.headers, body=req.body,
+                                         cookies=req.cookies, request=req)
+
+                # Check if handler returns a special response dict
+                if isinstance(handler_result, dict):
+                    if 'status' in handler_result:
+                        # Custom response from handler
+                        resp.status_code = handler_result.get('status', 200)
+                        resp.reason = handler_result.get('reason', 'OK')
+
+                        # Set cookies if provided
+                        if 'cookies' in handler_result:
+                            resp.cookies = handler_result['cookies']
+
+                        # Set custom headers
+                        if 'headers' in handler_result:
+                            resp.headers.update(handler_result['headers'])
+
+                        # Set body content
+                        if 'body' in handler_result:
+                            body_content = handler_result['body']
+                            if isinstance(body_content, str):
+                                resp._content = body_content.encode('utf-8')
+                            else:
+                                resp._content = body_content
+                            resp.headers['Content-Type'] = handler_result.get('content_type', 'text/html')
+                            response = resp.build_response_header(req) + resp._content
+                            conn.sendall(response)
+                            conn.close()
+                            return
+
+                        # If no body but has raw response
+                        if 'raw' in handler_result:
+                            conn.sendall(handler_result['raw'])
+                            conn.close()
+                            return
+
+            except Exception as e:
+                print("[HttpAdapter] Error in route handler: {}".format(e))
+                # Fall through to default response
+
+        # Build default response
         response = resp.build_response(req)
 
-        #print(response)
         conn.sendall(response)
         conn.close()
 

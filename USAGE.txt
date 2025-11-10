@@ -1,0 +1,259 @@
+====================================================================
+HTTP Server và Hybrid Chat Application - Hướng dẫn sử dụng
+====================================================================
+
+Dự án bao gồm 3 phần chính:
+1. HTTP Server với Cookie Authentication (Task 1A + 1B)
+2. Peer Tracker Server (Hybrid Chat - Client-Server Phase)
+3. P2P Chat Client (Hybrid Chat - P2P Phase)
+
+====================================================================
+PHẦN 1: HTTP SERVER VỚI COOKIE AUTHENTICATION
+====================================================================
+
+1.1. Chạy Authentication Web Application:
+
+    python start_authapp.py --server-ip 0.0.0.0 --server-port 8000
+
+1.2. Test với curl hoặc browser:
+
+    # Test 1A: POST /login với thông tin đúng
+    curl -X POST http://localhost:8000/login \
+         -d "username=admin&password=password" \
+         -v
+
+    Expected: 200 OK với Set-Cookie: auth=true
+
+    # Test 1A: POST /login với thông tin sai
+    curl -X POST http://localhost:8000/login \
+         -d "username=wrong&password=wrong" \
+         -v
+
+    Expected: 401 Unauthorized với WWW-Authenticate header
+
+    # Test 1B: GET / với cookie auth=true
+    curl http://localhost:8000/ \
+         -H "Cookie: auth=true" \
+         -v
+
+    Expected: 200 OK với nội dung index.html
+
+    # Test 1B: GET / không có cookie
+    curl http://localhost:8000/ -v
+
+    Expected: 401 Unauthorized với WWW-Authenticate header
+
+1.3. Test với browser:
+    - Mở http://localhost:8000/login
+    - Nhập username: admin, password: password
+    - Sau khi login thành công, truy cập http://localhost:8000/
+    - Cookie sẽ được lưu tự động và trang index.html sẽ hiển thị
+
+====================================================================
+PHẦN 2: HYBRID CHAT APPLICATION
+====================================================================
+
+2.1. Khởi động Peer Tracker Server (Terminal 1):
+
+    python peer_tracker.py --host 0.0.0.0 --port 5000
+
+    Server sẽ lắng nghe trên port 5000 để:
+    - Nhận đăng ký peer (REGISTER)
+    - Cung cấp danh sách peers (GET_PEERS)
+    - Nhận heartbeat từ peers (HEARTBEAT)
+
+2.2. Khởi động Chat Client Peer 1 (Terminal 2):
+
+    python chat_client.py peer1 --port 6001 \
+           --tracker-host 127.0.0.1 --tracker-port 5000
+
+    Client sẽ:
+    - Đăng ký với tracker server
+    - Lắng nghe kết nối P2P trên port 6001
+    - Hiển thị CLI để nhập lệnh chat
+
+2.3. Khởi động Chat Client Peer 2 (Terminal 3):
+
+    python chat_client.py peer2 --port 6002 \
+           --tracker-host 127.0.0.1 --tracker-port 5000
+
+2.4. Khởi động thêm nhiều peers (tùy chọn):
+
+    python chat_client.py peer3 --port 6003
+    python chat_client.py peer4 --port 6004
+    ...
+
+====================================================================
+PHẦN 3: SỬ DỤNG CHAT CLIENT
+====================================================================
+
+3.1. Các lệnh chat:
+
+    /msg <peer_id> <message>
+        - Gửi tin nhắn trực tiếp tới peer cụ thể
+        - Ví dụ: /msg peer2 Hello from peer1
+
+    /broadcast <message>
+        - Gửi tin nhắn tới tất cả peers
+        - Ví dụ: /broadcast Hello everyone!
+
+    /peers
+        - Hiển thị danh sách peers có sẵn
+        - Hiển thị trạng thái kết nối (connected/available)
+
+    /refresh
+        - Cập nhật danh sách peers từ tracker
+
+    /history
+        - Hiển thị lịch sử tin nhắn (20 tin gần nhất)
+
+    /quit
+        - Thoát khỏi chat và unregister từ tracker
+
+3.2. Ví dụ session:
+
+    Terminal 2 (peer1):
+    > /peers
+    Available peers:
+      peer2 - 127.0.0.1:6002 [available]
+
+    > /msg peer2 Hi peer2, this is peer1
+    [Client] Sent direct message to peer2
+
+    > /broadcast Hello everyone!
+    [Client] Broadcast sent to 1 peers
+
+    Terminal 3 (peer2):
+    [peer1] Direct message: Hi peer2, this is peer1
+    >
+    [peer1] Broadcast: Hello everyone!
+    >
+
+====================================================================
+PHẦN 4: KIẾN TRÚC VÀ GIAO THỨC
+====================================================================
+
+4.1. Client-Server Phase (Tracker):
+    - Protocol: TCP socket
+    - Commands:
+        REGISTER <peer_id> <ip> <port>
+        GET_PEERS
+        UNREGISTER <peer_id>
+        HEARTBEAT <peer_id>
+    - Response: JSON format
+
+4.2. P2P Phase (Direct Peer Communication):
+    - Protocol: TCP socket
+    - Message format: JSON
+        {
+            "type": "direct" | "broadcast",
+            "from": "<peer_id>",
+            "content": "<message>"
+        }
+
+4.3. Threading Model:
+    - Backend server: Multi-threaded, mỗi client một thread
+    - Peer tracker: Multi-threaded, mỗi request một thread
+    - Chat client: Multi-threaded
+        + Listen thread: nhận kết nối P2P
+        + Heartbeat thread: gửi heartbeat định kỳ
+        + Main thread: CLI interface
+
+====================================================================
+PHẦN 5: RFC COMPLIANCE
+====================================================================
+
+5.1. RFC 6265 - HTTP Cookie:
+    - Set-Cookie header format:
+        Set-Cookie: auth=true; Path=/; HttpOnly
+    - Cookie attributes:
+        + Path=/: Cookie áp dụng cho toàn bộ site
+        + HttpOnly: Bảo vệ khỏi XSS attacks
+        + Secure: Chỉ gửi qua HTTPS (có thể enable)
+
+5.2. RFC 7235 - HTTP Authentication:
+    - 401 Unauthorized response:
+        HTTP/1.1 401 Unauthorized
+        WWW-Authenticate: Basic realm="Authentication Required"
+    - MUST include WWW-Authenticate header
+    - Indicates request lacks valid authentication credentials
+
+====================================================================
+PHẦN 6: CẤU TRÚC FILE
+====================================================================
+
+http_daemon/
+├── daemon/
+│   ├── request.py         # HTTP Request parsing (cookies, body, auth)
+│   ├── response.py        # HTTP Response building (headers, Set-Cookie, 401)
+│   ├── backend.py         # Backend server (multi-threading)
+│   ├── httpadapter.py     # HTTP adapter (request-response handling)
+│   ├── weaprous.py        # RESTful framework
+│   ├── dictionary.py      # Case-insensitive dictionary
+│   └── __init__.py
+│
+├── start_authapp.py       # Authentication webapp (Task 1A + 1B)
+├── peer_tracker.py        # Peer tracker server (Client-Server phase)
+├── chat_client.py         # P2P chat client (P2P phase)
+│
+├── www/
+│   ├── index.html         # Main page (requires auth)
+│   └── login.html         # Login form
+│
+├── static/                # CSS, images
+└── config/
+    └── proxy.conf         # Proxy configuration
+
+====================================================================
+PHẦN 7: TROUBLESHOOTING
+====================================================================
+
+7.1. Lỗi "Address already in use":
+    - Port đang được sử dụng, đổi port khác hoặc kill process:
+        lsof -i :8000
+        kill <PID>
+
+7.2. Lỗi "Connection refused" khi register với tracker:
+    - Kiểm tra tracker server đã chạy chưa
+    - Kiểm tra host/port của tracker
+
+7.3. Không nhận được tin nhắn P2P:
+    - Kiểm tra firewall có block port không
+    - Kiểm tra peer đã kết nối thành công chưa (dùng /peers)
+    - Thử /refresh để cập nhật peer list
+
+7.4. Cookie không được lưu:
+    - Kiểm tra Set-Cookie header có được gửi không (curl -v)
+    - Nếu dùng browser, check Developer Tools -> Application -> Cookies
+
+====================================================================
+PHẦN 8: TESTING
+====================================================================
+
+8.1. Test HTTP Authentication:
+    # Terminal 1
+    python start_authapp.py
+
+    # Terminal 2
+    curl -X POST http://localhost:8000/login \
+         -d "username=admin&password=password" -v
+
+8.2. Test Chat Application:
+    # Terminal 1: Tracker
+    python peer_tracker.py
+
+    # Terminal 2: Peer 1
+    python chat_client.py alice --port 6001
+
+    # Terminal 3: Peer 2
+    python chat_client.py bob --port 6002
+
+    # Trong peer 1:
+    > /msg bob Hello Bob!
+
+    # Trong peer 2:
+    > /msg alice Hi Alice!
+
+====================================================================
+END OF USAGE GUIDE
+====================================================================
