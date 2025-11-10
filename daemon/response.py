@@ -197,11 +197,18 @@ class Response():
         filepath = os.path.join(base_dir, path.lstrip('/'))
 
         print("[Response] serving the object at location {}".format(filepath))
-            #
-            #  TODO: implement the step of fetch the object file
-            #        store in the return value of content
-            #
-        return len(content), content
+
+        try:
+            # Read file content
+            with open(filepath, 'rb') as f:
+                content = f.read()
+            return len(content), content
+        except FileNotFoundError:
+            print("[Response] File not found: {}".format(filepath))
+            return 0, b''
+        except Exception as e:
+            print("[Response] Error reading file: {}".format(e))
+            return 0, b''
 
 
     def build_response_header(self, request):
@@ -216,37 +223,63 @@ class Response():
         reqhdr = request.headers
         rsphdr = self.headers
 
-        #Build dynamic headers
-        headers = {
-                "Accept": "{}".format(reqhdr.get("Accept", "application/json")),
-                "Accept-Language": "{}".format(reqhdr.get("Accept-Language", "en-US,en;q=0.9")),
-                "Authorization": "{}".format(reqhdr.get("Authorization", "Basic <credentials>")),
-                "Cache-Control": "no-cache",
-                "Content-Type": "{}".format(self.headers['Content-Type']),
-                "Content-Length": "{}".format(len(self._content)),
-#                "Cookie": "{}".format(reqhdr.get("Cookie", "sessionid=xyz789")), #dummy cooki
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
-                "Date": "{}".format(datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")),
-                "Max-Forward": "10",
-                "Pragma": "no-cache",
-                "Proxy-Authorization": "Basic dXNlcjpwYXNz",  # example base64
-                "Warning": "199 Miscellaneous warning",
-                "User-Agent": "{}".format(reqhdr.get("User-Agent", "Chrome/123.0.0.0")),
-            }
+        # Build status line
+        status_code = self.status_code or 200
+        reason = self.reason or "OK"
+        status_line = "HTTP/1.1 {} {}".format(status_code, reason)
 
-        # Header text alignment
-            #
-            #  TODO: implement the header building to create formated
-            #        header from the provied headers
-            #
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
-        return str(fmt_header).encode('utf-8')
+        # Build dynamic headers
+        header_lines = [status_line]
+
+        # Add Content-Type
+        if 'Content-Type' in self.headers:
+            header_lines.append("Content-Type: {}".format(self.headers['Content-Type']))
+
+        # Add Content-Length
+        header_lines.append("Content-Length: {}".format(len(self._content)))
+
+        # Add Date
+        header_lines.append("Date: {}".format(
+            datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        ))
+
+        # Add Cache-Control
+        header_lines.append("Cache-Control: no-cache")
+
+        # Add Server
+        header_lines.append("Server: WeApRous/1.0")
+
+        # Add Set-Cookie headers (RFC 6265)
+        if self.cookies:
+            for name, value in self.cookies.items():
+                if isinstance(value, dict):
+                    # Full cookie with attributes
+                    cookie_str = "{}={}".format(name, value.get('value', ''))
+                    if value.get('path'):
+                        cookie_str += "; Path={}".format(value['path'])
+                    if value.get('httponly'):
+                        cookie_str += "; HttpOnly"
+                    if value.get('secure'):
+                        cookie_str += "; Secure"
+                    if value.get('max_age'):
+                        cookie_str += "; Max-Age={}".format(value['max_age'])
+                    header_lines.append("Set-Cookie: {}".format(cookie_str))
+                else:
+                    # Simple cookie
+                    header_lines.append("Set-Cookie: {}={}".format(name, value))
+
+        # Add any custom headers
+        for key, value in rsphdr.items():
+            if key not in ['Content-Type', 'Content-Length']:
+                header_lines.append("{}: {}".format(key, value))
+
+        # Add Connection header
+        header_lines.append("Connection: close")
+
+        # Format header
+        fmt_header = "\r\n".join(header_lines) + "\r\n\r\n"
+
+        return fmt_header.encode('utf-8')
 
 
     def build_notfound(self):
@@ -265,6 +298,28 @@ class Response():
                 "Connection: close\r\n"
                 "\r\n"
                 "404 Not Found"
+            ).encode('utf-8')
+
+    def build_unauthorized(self, realm="WeApRous"):
+        """
+        Constructs a 401 Unauthorized HTTP response according to RFC 7235.
+
+        MUST include WWW-Authenticate header to indicate request lacks
+        valid authentication credentials.
+
+        :param realm: Authentication realm
+        :rtype bytes: Encoded 401 response.
+        """
+        body = "401 Unauthorized"
+        return (
+                "HTTP/1.1 401 Unauthorized\r\n"
+                "WWW-Authenticate: Basic realm=\"{}\"\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: {}\r\n"
+                "Cache-Control: no-cache\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "{}".format(realm, len(body), body)
             ).encode('utf-8')
 
 

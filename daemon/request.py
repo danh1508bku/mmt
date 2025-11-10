@@ -102,7 +102,7 @@ class Request():
         #
         # TODO manage the webapp hook in this mounting point
         #
-        
+
         if not routes == {}:
             self.routes = routes
             self.hook = routes.get((self.method, self.path))
@@ -112,38 +112,108 @@ class Request():
             #
 
         self.headers = self.prepare_headers(request)
-        cookies = self.headers.get('cookie', '')
-            #
-            #  TODO: implement the cookie function here
-            #        by parsing the header            #
+
+        # Parse cookies from Cookie header
+        cookie_header = self.headers.get('cookie', '')
+        self.cookies = self.parse_cookies(cookie_header)
+
+        # Parse body for POST/PUT requests
+        self.body = self.parse_body(request)
 
         return
+
+    def parse_cookies(self, cookie_string):
+        """Parse cookies from Cookie header string.
+
+        Implements RFC 6265 cookie parsing.
+
+        :param cookie_string: Cookie header value
+        :return: Dictionary of cookie name-value pairs
+        """
+        cookies = {}
+        if not cookie_string:
+            return cookies
+
+        # Split by semicolon and parse each cookie
+        for cookie in cookie_string.split(';'):
+            cookie = cookie.strip()
+            if '=' in cookie:
+                name, value = cookie.split('=', 1)
+                cookies[name.strip()] = value.strip()
+
+        return cookies
+
+    def parse_body(self, request):
+        """Parse request body from HTTP request.
+
+        Extracts the body content after the header section.
+
+        :param request: Full HTTP request string
+        :return: Body content as string
+        """
+        # HTTP request format: headers\r\n\r\nbody
+        if '\r\n\r\n' in request:
+            _, body = request.split('\r\n\r\n', 1)
+            return body
+        return ''
+
+    def parse_form_data(self, body):
+        """Parse URL-encoded form data.
+
+        :param body: URL-encoded body string
+        :return: Dictionary of form fields
+        """
+        form_data = {}
+        if not body:
+            return form_data
+
+        for pair in body.split('&'):
+            if '=' in pair:
+                key, value = pair.split('=', 1)
+                # URL decode
+                import urllib
+                try:
+                    from urllib import unquote
+                except ImportError:
+                    from urllib.parse import unquote
+                form_data[unquote(key)] = unquote(value)
+
+        return form_data
 
     def prepare_body(self, data, files, json=None):
-        self.prepare_content_length(self.body)
-        self.body = body
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
+        """Prepare request body with content length."""
+        if self.body:
+            self.prepare_content_length(self.body)
         return
-
 
     def prepare_content_length(self, body):
-        self.headers["Content-Length"] = "0"
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
+        """Set Content-Length header."""
+        if body:
+            self.headers["Content-Length"] = str(len(body))
+        else:
+            self.headers["Content-Length"] = "0"
         return
 
-
     def prepare_auth(self, auth, url=""):
-        #
-        # TODO prepare the request authentication
-        #
-	# self.auth = ...
+        """Prepare request authentication.
+
+        :param auth: Authentication credentials
+        :param url: Target URL
+        """
+        # Basic authentication implementation
+        if auth:
+            import base64
+            username, password = auth
+            credentials = "{}:{}".format(username, password)
+            b64_credentials = base64.b64encode(credentials.encode()).decode()
+            self.headers["Authorization"] = "Basic {}".format(b64_credentials)
         return
 
     def prepare_cookies(self, cookies):
-            self.headers["Cookie"] = cookies
+        """Set Cookie header from dictionary.
+
+        :param cookies: Dictionary of cookie name-value pairs
+        """
+        if cookies:
+            cookie_string = '; '.join(['{}={}'.format(k, v) for k, v in cookies.items()])
+            self.headers["Cookie"] = cookie_string
