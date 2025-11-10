@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# Demo script - Hybrid Chat Application
+#
+
+echo "======================================================================"
+echo "DEMO: Hybrid Chat Application (Client-Server + P2P)"
+echo "======================================================================"
+echo ""
+echo "Yêu cầu đề bài:"
+echo ""
+echo "  Giai đoạn 1 - Client-Server Phase:"
+echo "    - Đăng ký peer: peer gửi IP, port tới tracker"
+echo "    - Tracker update: server lưu danh sách peers"
+echo "    - Peer discovery: peer yêu cầu danh sách peers"
+echo "    - Connection setup: peers kết nối trực tiếp"
+echo ""
+echo "  Giai đoạn 2 - P2P Chat Phase:"
+echo "    - Truyền tin trực tiếp giữa peers (không qua server)"
+echo "    - Broadcast: gửi tin tới tất cả peers"
+echo "    - Direct message: gửi tin riêng lẻ"
+echo ""
+echo "======================================================================"
+echo ""
+
+echo "Bước 1: Khởi động Peer Tracker Server"
+echo "Mở terminal mới và chạy:"
+echo ""
+echo "    python peer_tracker.py --port 5000"
+echo ""
+echo "Press Enter khi tracker đã chạy..."
+read
+
+echo ""
+echo "Bước 2: Test đăng ký peer với tracker"
+echo "Gửi REGISTER command tới tracker..."
+echo ""
+
+# Test REGISTER
+echo "REGISTER testpeer 127.0.0.1 6001" | nc localhost 5000
+echo ""
+
+echo "Press Enter để tiếp tục..."
+read
+
+echo ""
+echo "Bước 3: Test GET_PEERS command"
+echo "Lấy danh sách peers từ tracker..."
+echo ""
+
+# Test GET_PEERS
+echo "GET_PEERS" | nc localhost 5000
+echo ""
+
+echo "Press Enter để tiếp tục..."
+read
+
+echo ""
+echo "======================================================================"
+echo "Bước 4: Khởi động Chat Clients"
+echo "======================================================================"
+echo ""
+echo "Mở 2 terminals mới và chạy:"
+echo ""
+echo "  Terminal 2 (Peer Alice):"
+echo "    python chat_client.py alice --port 6001 --tracker-port 5000"
+echo ""
+echo "  Terminal 3 (Peer Bob):"
+echo "    python chat_client.py bob --port 6002 --tracker-port 5000"
+echo ""
+echo "======================================================================"
+echo "Hướng dẫn sử dụng Chat Client:"
+echo "======================================================================"
+echo ""
+echo "Trong terminal của Alice, gõ:"
+echo "  > /peers                      # Xem danh sách peers"
+echo "  > /msg bob Hello Bob!         # Gửi tin trực tiếp tới Bob"
+echo "  > /broadcast Hi everyone!     # Broadcast tới tất cả"
+echo ""
+echo "Trong terminal của Bob, gõ:"
+echo "  > /msg alice Hi Alice!        # Gửi tin trực tiếp tới Alice"
+echo "  > /history                    # Xem lịch sử tin nhắn"
+echo ""
+echo "======================================================================"
+echo "Kiến trúc hoạt động:"
+echo "======================================================================"
+echo ""
+echo "  1. Client-Server Phase:"
+echo "     Alice → REGISTER alice 127.0.0.1 6001 → Tracker"
+echo "     Bob   → REGISTER bob 127.0.0.1 6002   → Tracker"
+echo "     Alice → GET_PEERS → Tracker → Returns: [bob@127.0.0.1:6002]"
+echo ""
+echo "  2. P2P Chat Phase:"
+echo "     Alice → Direct TCP Connection → Bob (port 6002)"
+echo "     Alice sends: {type: 'direct', from: 'alice', content: 'Hello'}"
+echo "     Bob receives and displays message"
+echo ""
+echo "======================================================================"
+echo ""
+echo "Kết luận:"
+echo "  ✓ Peer registration: IMPLEMENTED"
+echo "  ✓ Tracker update: IMPLEMENTED"
+echo "  ✓ Peer discovery: IMPLEMENTED"
+echo "  ✓ P2P direct messaging: IMPLEMENTED"
+echo "  ✓ Broadcast messaging: IMPLEMENTED"
+echo "  ✓ Multi-threading: IMPLEMENTED"
+echo ""
