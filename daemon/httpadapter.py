@@ -92,8 +92,6 @@ class HttpAdapter:
         :param addr (tuple): The client's address.
         :param routes (dict): The route mapping for dispatching requests.
         """
-        import urllib
-
         # Connection handler.
         self.conn = conn
         # Connection address.
@@ -126,20 +124,31 @@ class HttpAdapter:
         if req.method == 'POST' and req.path == '/login':
             # Parse form data
             params = {}
+            print("[Login] Request body: '{}'".format(req.body))
+
             if req.body:
                 try:
+                    # Python 3 compatibility
+                    try:
+                        from urllib.parse import unquote_plus
+                    except ImportError:
+                        from urllib import unquote_plus
+
                     for pair in req.body.split('&'):
                         if '=' in pair:
                             k, v = pair.split('=', 1)
-                            params[urllib.unquote_plus(k)] = urllib.unquote_plus(v)
-                except:
-                    pass
+                            params[unquote_plus(k)] = unquote_plus(v)
+                except Exception as e:
+                    print("[Login] Error parsing body: {}".format(e))
 
             username = params.get('username', '')
             password = params.get('password', '')
 
+            print("[Login] Parsed username='{}', password='{}'".format(username, password))
+
             # Validate credentials
             if username == 'admin' and password == 'password':
+                print("[Login] Authentication successful!")
                 # Success - set cookie and return index.html
                 resp.status_code = 200
                 resp.reason = "OK"
@@ -157,6 +166,7 @@ class HttpAdapter:
                 response = resp._header + resp._content
             else:
                 # Failed - return 401 with WWW-Authenticate
+                print("[Login] Authentication failed! username='{}', password='{}'".format(username, password))
                 resp.status_code = 401
                 resp.reason = "Unauthorized"
                 resp.headers['WWW-Authenticate'] = 'Basic realm="Login"'
