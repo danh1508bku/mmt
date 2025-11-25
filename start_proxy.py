@@ -28,9 +28,6 @@ Requirements:
 - threading: enables concurrent client handling via threads.
 - argparse: parses command-line arguments for server configuration.
 - re: used for regular expression matching in configuration parsing
-- response: response utilities.
-- httpadapter: the class for handling HTTP requests.
-- urlparse: parses URLs to extract host and port information.
 - daemon.create_proxy: initializes and starts the proxy server.
 
 """
@@ -39,8 +36,6 @@ import socket
 import threading
 import argparse
 import re
-from urlparse import urlparse
-from collections import defaultdict
 
 from daemon import create_proxy
 
