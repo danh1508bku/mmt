@@ -49,9 +49,11 @@ python start_sampleapp.py --server-ip 0.0.0.0 --server-port 8000
 
 ### 4. Access the Application
 Open your browser and navigate to:
-- **Proxy URL**: `http://192.168.56.103:8080`
-- **Direct Backend**: `http://192.168.56.103:9000`
-- **Direct Chat App**: `http://192.168.56.103:8000`
+- **Via Proxy**: `http://localhost:8080` or `http://127.0.0.1:8080`
+- **Direct Backend**: `http://localhost:9000` or `http://127.0.0.1:9000`
+- **Direct Chat App**: `http://localhost:8000` or `http://127.0.0.1:8000`
+
+**Note**: When accessing via proxy (port 8080), you need to ensure your browser sends the correct Host header. For local testing, it's easier to access the backend directly on port 9000.
 
 ## Default Credentials
 
@@ -110,17 +112,21 @@ mmt/
 ### Proxy Configuration (`config/proxy.conf`)
 
 ```nginx
-host "192.168.56.103:8080" {
-    proxy_pass http://192.168.56.103:9000;
+host "localhost:8080" {
+    proxy_pass http://127.0.0.1:9000;
+}
+
+host "127.0.0.1:8080" {
+    proxy_pass http://127.0.0.1:9000;
 }
 
 host "app1.local" {
-    proxy_pass http://192.168.56.103:9001;
+    proxy_pass http://127.0.0.1:9001;
 }
 
 host "app2.local" {
-    proxy_pass http://192.168.56.210:9002;
-    proxy_pass http://192.168.56.220:9002;
+    proxy_pass http://127.0.0.1:9002;
+    proxy_pass http://127.0.0.1:9003;
     dist_policy round-robin
 }
 ```
@@ -176,32 +182,32 @@ host "app2.local" {
 
 ### 1. Test Login
 ```bash
-curl -X POST http://192.168.56.103:8000/login \
+curl -X POST http://localhost:8000/login \
   -d "username=admin&password=password" \
   -v
 ```
 
 ### 2. Test Protected Resource
 ```bash
-curl http://192.168.56.103:9000/ -v
+curl http://localhost:9000/ -v
 # Should return 401 without cookie
 
-curl http://192.168.56.103:9000/ \
+curl http://localhost:9000/ \
   -H "Cookie: auth=true" -v
 # Should return chat interface
 ```
 
 ### 3. Test Chat Message
 ```bash
-curl -X POST http://192.168.56.103:8000/channel/general/message \
+curl -X POST http://localhost:8000/channel/general/message \
   -d "username=TestUser&message=Hello World" \
   -H "Content-Type: application/x-www-form-urlencoded"
 ```
 
 ### 4. Test Peer Registration
 ```bash
-curl -X POST http://192.168.56.103:8000/submit-info \
-  -d "ip=192.168.1.100&port=5000&name=Peer1"
+curl -X POST http://localhost:8000/submit-info \
+  -d "ip=127.0.0.1&port=5000&name=Peer1"
 ```
 
 ## Troubleshooting
