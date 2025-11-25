@@ -90,15 +90,15 @@ def resolve_routing_policy(hostname, routes):
 
     print(hostname)
     proxy_map, policy = routes.get(hostname,('127.0.0.1:9000','round-robin'))
-    print proxy_map
-    print policy
+    print(proxy_map)
+    print(policy)
 
     proxy_host = ''
     proxy_port = '9000'
     if isinstance(proxy_map, list):
         if len(proxy_map) == 0:
             print("[Proxy] Emtpy resolved routing of hostname {}".format(hostname))
-            print "Empty proxy_map result"
+            print("Empty proxy_map result")
             # TODO: implement the error handling for non mapped host
             #       the policy is design by team, but it can be 
             #       basic default host in your self-defined system
@@ -138,15 +138,60 @@ def handle_client(ip, port, conn, addr, routes):
     :params addr (tuple): client address (IP, port).
     :params routes (dict): dictionary mapping hostnames and location.
     """
+    import base64
 
-    request = conn.recv(1024).decode()
+    request = conn.recv(4096).decode()
+
+    # Parse headers to extract Proxy-Authorization (RFC 7235)
+    header_part = request.split('\r\n\r\n')[0]
+    header_lines = header_part.split('\r\n')
+    header_dict = {}
+    hostname = ''
+
+    for line in header_lines[1:]:  # Skip request line
+        if ':' in line:
+            k, v = line.split(':', 1)
+            header_dict[k.strip().lower()] = v.strip()
 
     # Extract hostname
-    for line in request.splitlines():
-        if line.lower().startswith('host:'):
-            hostname = line.split(':', 1)[1].strip()
+    hostname = header_dict.get('host', '')
+
+    # Extract Proxy-Authorization
+    proxy_auth = header_dict.get('proxy-authorization', '')
 
     print("[Proxy] {} at Host: {}".format(addr, hostname))
+
+    # Validate Proxy-Authorization (RFC 7235)
+    # Expected: "Basic YWRtaW46cGFzc3dvcmQ=" (admin:password in base64)
+    VALID_PROXY_CRED = "Basic " + base64.b64encode("admin:password".encode()).decode()
+
+    if proxy_auth != VALID_PROXY_CRED:
+        # Return 407 Proxy Authentication Required
+        print("[Proxy] Authentication failed. Expected: {}, Got: {}".format(VALID_PROXY_CRED, proxy_auth))
+        response = (
+            "HTTP/1.1 407 Proxy Authentication Required\r\n"
+            "Proxy-Authenticate: Basic realm=\"ProxyRealm\"\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: 77\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<html><body><h1>407 Proxy Authentication Required</h1></body></html>"
+        ).encode('utf-8')
+        conn.sendall(response)
+        conn.close()
+        return
+
+    print("[Proxy] Proxy authentication successful")
+
+    # Remove Proxy-Authorization header before forwarding to backend
+    new_header_lines = [header_lines[0]]  # Keep request line
+    for line in header_lines[1:]:
+        if not line.lower().startswith('proxy-authorization:'):
+            new_header_lines.append(line)
+
+    # Reconstruct request
+    body_part = request.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in request else ''
+    cleaned_request = '\r\n'.join(new_header_lines) + '\r\n\r\n' + body_part
 
     # Resolve the matching destination in routes and need conver port
     # to integer value
@@ -158,7 +203,7 @@ def handle_client(ip, port, conn, addr, routes):
 
     if resolved_host:
         print("[Proxy] Host name {} is forwarded to {}:{}".format(hostname,resolved_host, resolved_port))
-        response = forward_request(resolved_host, resolved_port, request)        
+        response = forward_request(resolved_host, resolved_port, cleaned_request)
     else:
         response = (
             "HTTP/1.1 404 Not Found\r\n"
@@ -195,10 +240,11 @@ def run_proxy(ip, port, routes):
         while True:
             conn, addr = proxy.accept()
             #
-            #  TODO: implement the step of the client incomping connection
-            #        using multi-thread programming with the
-            #        provided handle_client routine
+            # Multi-thread handling for each client
             #
+            client_thread = threading.Thread(target=handle_client, args=(ip, port, conn, addr, routes))
+            client_thread.daemon = True
+            client_thread.start()
     except socket.error as e:
       print("Socket error: {}".format(e))
 

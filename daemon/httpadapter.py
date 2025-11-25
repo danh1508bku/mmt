@@ -92,9 +92,10 @@ class HttpAdapter:
         :param addr (tuple): The client's address.
         :param routes (dict): The route mapping for dispatching requests.
         """
+        import urllib
 
         # Connection handler.
-        self.conn = conn        
+        self.conn = conn
         # Connection address.
         self.connaddr = addr
         # Request handler
@@ -103,21 +104,103 @@ class HttpAdapter:
         resp = self.response
 
         # Handle the request
-        msg = conn.recv(1024).decode()
+        msg = conn.recv(4096).decode()
         req.prepare(msg, routes)
 
-        # Handle request hook
+        # Handle request hook (for WeApRous routes)
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
             req.hook(headers = "bksysnet",body = "get in touch")
-            #
-            # TODO: handle for App hook here
-            #
+            # Build a simple response for hooks
+            resp.status_code = 200
+            resp.reason = "OK"
+            resp.headers['Content-Type'] = 'text/plain'
+            resp._content = b"Hook executed"
+            resp._header = resp.build_response_header(req)
+            response = resp._header + resp._content
+            conn.sendall(response)
+            conn.close()
+            return
 
-        # Build response
+        # Handle POST /login (RFC 2617 + Cookie Session)
+        if req.method == 'POST' and req.path == '/login':
+            # Parse form data
+            params = {}
+            if req.body:
+                try:
+                    for pair in req.body.split('&'):
+                        if '=' in pair:
+                            k, v = pair.split('=', 1)
+                            params[urllib.unquote_plus(k)] = urllib.unquote_plus(v)
+                except:
+                    pass
+
+            username = params.get('username', '')
+            password = params.get('password', '')
+
+            # Validate credentials
+            if username == 'admin' and password == 'password':
+                # Success - set cookie and return index.html
+                resp.status_code = 200
+                resp.reason = "OK"
+                resp.cookies['auth'] = 'true'
+                resp.headers['Content-Type'] = 'text/html'
+
+                # Load index.html
+                try:
+                    with open('www/index.html', 'rb') as f:
+                        resp._content = f.read()
+                except:
+                    resp._content = b"<html><body><h1>Login successful!</h1></body></html>"
+
+                resp._header = resp.build_response_header(req)
+                response = resp._header + resp._content
+            else:
+                # Failed - return 401 with WWW-Authenticate
+                resp.status_code = 401
+                resp.reason = "Unauthorized"
+                resp.headers['WWW-Authenticate'] = 'Basic realm="Login"'
+                resp.headers['Content-Type'] = 'text/html'
+                resp._content = b"<html><body><h1>401 Unauthorized</h1><p>Invalid username or password</p></body></html>"
+                resp._header = resp.build_response_header(req)
+                response = resp._header + resp._content
+
+            conn.sendall(response)
+            conn.close()
+            return
+
+        # Handle GET / or /index.html (RFC 2617 + Cookie Session)
+        if req.method == 'GET' and (req.path == '/' or req.path == '/index.html'):
+            # Check cookie authentication
+            auth_cookie = req.cookies.get('auth', '') if req.cookies else ''
+
+            if auth_cookie == 'true':
+                # Authenticated - return index.html
+                response = resp.build_response(req)
+            else:
+                # Not authenticated - return 401 with WWW-Authenticate
+                resp.status_code = 401
+                resp.reason = "Unauthorized"
+                resp.headers['WWW-Authenticate'] = 'Basic realm="ChatRealm"'
+                resp.headers['Content-Type'] = 'text/html'
+
+                # Load login.html or return simple login page
+                try:
+                    with open('www/login.html', 'rb') as f:
+                        resp._content = f.read()
+                except:
+                    resp._content = b"<html><body><h1>401 Unauthorized</h1><p>Please login first</p></body></html>"
+
+                resp._header = resp.build_response_header(req)
+                response = resp._header + resp._content
+
+            conn.sendall(response)
+            conn.close()
+            return
+
+        # Build default response for other paths
         response = resp.build_response(req)
 
-        #print(response)
         conn.sendall(response)
         conn.close()
 

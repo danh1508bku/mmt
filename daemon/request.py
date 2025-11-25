@@ -100,22 +100,23 @@ class Request():
         # @bksysnet Preapring the webapp hook with WeApRous instance
         # The default behaviour with HTTP server is empty routed
         #
-        # TODO manage the webapp hook in this mounting point
-        #
-        
+
         if not routes == {}:
             self.routes = routes
             self.hook = routes.get((self.method, self.path))
-            #
-            # self.hook manipulation goes here
-            # ...
-            #
 
         self.headers = self.prepare_headers(request)
-        cookies = self.headers.get('cookie', '')
-            #
-            #  TODO: implement the cookie function here
-            #        by parsing the header            #
+
+        # Parse cookies from Cookie header (RFC 6265)
+        cookie_header = self.headers.get('cookie', '')
+        self.prepare_cookies(cookie_header)
+
+        # Parse body if present
+        parts = request.split('\r\n\r\n', 1)
+        if len(parts) > 1:
+            self.body = parts[1]
+        else:
+            self.body = ''
 
         return
 
@@ -145,5 +146,20 @@ class Request():
 	# self.auth = ...
         return
 
-    def prepare_cookies(self, cookies):
-            self.headers["Cookie"] = cookies
+    def prepare_cookies(self, cookie_header):
+        """
+        Parse Cookie header according to RFC 6265.
+
+        :params cookie_header (str): Cookie header string (e.g., "auth=true; theme=dark")
+        """
+        self.cookies = CaseInsensitiveDict()
+        if not cookie_header:
+            return
+
+        # Parse cookie pairs separated by semicolon
+        parts = cookie_header.split(';')
+        for part in parts:
+            part = part.strip()
+            if '=' in part:
+                name, value = part.split('=', 1)
+                self.cookies[name.strip()] = value.strip()
