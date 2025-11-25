@@ -94,7 +94,7 @@ class HttpAdapter:
         """
 
         # Connection handler.
-        self.conn = conn        
+        self.conn = conn
         # Connection address.
         self.connaddr = addr
         # Request handler
@@ -106,18 +106,43 @@ class HttpAdapter:
         msg = conn.recv(1024).decode()
         req.prepare(msg, routes)
 
-        # Handle request hook
+        # Handle request hook (WeApRous routes)
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
-            req.hook(headers = "bksysnet",body = "get in touch")
-            #
-            # TODO: handle for App hook here
-            #
 
-        # Build response
-        response = resp.build_response(req)
+            # Call the route handler and get the response
+            hook_result = req.hook(request=req, response=resp)
 
-        #print(response)
+            # If hook returned a response, send it
+            if hook_result:
+                response = hook_result
+            else:
+                # Otherwise build normal response
+                response = resp.build_response(req)
+        else:
+            # Static file serving - check authentication for protected paths
+            protected_paths = ['/index.html', '/']
+
+            if req.path in protected_paths:
+                # Check for auth cookie (RFC 6265)
+                auth_cookie = req.cookies.get('auth', '')
+
+                if auth_cookie != 'true':
+                    # No valid auth cookie - return 401 Unauthorized (RFC 7235)
+                    print("[HttpAdapter] Unauthorized access attempt to {}".format(req.path))
+                    resp.status_code = 401
+                    resp.reason = "Unauthorized"
+                    resp.headers['WWW-Authenticate'] = 'Basic realm="NetApp"'
+                    resp.headers['Content-Type'] = 'text/html'
+                    resp._content = b'<html><body><h1>401 Unauthorized</h1><p>Please <a href="/login.html">login</a> first.</p></body></html>'
+                    response = resp.build_response_header(req) + resp._content
+                else:
+                    # Valid auth cookie - serve the protected content
+                    response = resp.build_response(req)
+            else:
+                # Non-protected path - serve normally
+                response = resp.build_response(req)
+
         conn.sendall(response)
         conn.close()
 

@@ -75,7 +75,7 @@ class Request():
             if path == '/':
                 path = '/index.html'
         except Exception:
-            return None, None
+            return None, None, None
 
         return method, path, version
              
@@ -113,9 +113,18 @@ class Request():
 
         self.headers = self.prepare_headers(request)
         cookies = self.headers.get('cookie', '')
-            #
-            #  TODO: implement the cookie function here
-            #        by parsing the header            #
+        self.cookies = self.prepare_cookies(cookies)
+
+        # Parse body if present
+        content_length = int(self.headers.get('content-length', 0))
+        if content_length > 0:
+            lines = request.split('\r\n\r\n', 1)
+            if len(lines) > 1:
+                self.body = lines[1]
+            else:
+                self.body = ''
+        else:
+            self.body = ''
 
         return
 
@@ -145,5 +154,22 @@ class Request():
 	# self.auth = ...
         return
 
-    def prepare_cookies(self, cookies):
-            self.headers["Cookie"] = cookies
+    def prepare_cookies(self, cookie_header):
+        """
+        Parse cookies from the Cookie header according to RFC 6265.
+
+        :param cookie_header (str): The Cookie header value
+        :rtype: dict - Dictionary of cookie key-value pairs
+        """
+        cookies = {}
+        if not cookie_header:
+            return cookies
+
+        # Split by semicolon and parse key=value pairs
+        for cookie_pair in cookie_header.split(';'):
+            cookie_pair = cookie_pair.strip()
+            if '=' in cookie_pair:
+                key, value = cookie_pair.split('=', 1)
+                cookies[key.strip()] = value.strip()
+
+        return cookies
